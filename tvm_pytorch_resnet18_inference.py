@@ -6,9 +6,12 @@ from tvm.contrib.download import download_testdata
 import torch
 import torchvision
 from scipy.special import softmax
+
 # device = torch.device("cpu")
-model_name = "resnet18"
-model = getattr(torchvision.models, model_name)(pretrained=True)
+
+# Manually import the pre-training model
+model = torchvision.models.resnet18(pretrained=False)
+model.load_state_dict(torch.load('./resnet18-f37072fd.pth'),strict=True)
 model = model.eval()
 
 # We grab the TorchScripted model via tracing
@@ -22,6 +25,7 @@ img_url = "https://github.com/dmlc/mxnet.js/blob/main/data/cat.png?raw=true"
 img_path = download_testdata(img_url, "cat.png", module="data")
 print(img_path)
 img = Image.open(img_path).resize((224, 224))
+print("img DONE\n")
 
 # Preprocess the image and convert to tensor
 from torchvision import transforms
@@ -37,6 +41,7 @@ my_preprocess = transforms.Compose(
 )
 img = my_preprocess(img)
 img = np.expand_dims(img, 0)
+print("PyTorch DONE\n")
 
 ######################################################################
 # Import the graph to Relay
@@ -50,11 +55,12 @@ mod, params = relay.frontend.from_pytorch(scripted_model, shape_list)
 # Relay Build
 # -----------
 # Compile the graph to llvm target with given input specification.
-target = "llvm"
-target_host = "llvm"
+target = tvm.target.Target("llvm -mcpu=skylake-avx512", host="llvm")
 dev = tvm.cpu(0)
+print("Relay Build DONE\n")
 with tvm.transform.PassContext(opt_level=7):
-    lib = relay.build(mod, target=target, target_host=target_host, params=params)
+    lib = relay.build(mod, target=target, params=params)
+print("Relay Build DONE\n")
 
 ######################################################################
 # Execute the portable graph on TVM
@@ -80,6 +86,7 @@ for i in range(n_warmup+n_time):
     tvm_output = m.get_output(0)
     tvm_time_spent.append(time.time() - tvm_t0)
 # tvm_t1 = time.process_time()
+print("1 DONE\n")
 
 #####################################################################
 # Look up synset name
